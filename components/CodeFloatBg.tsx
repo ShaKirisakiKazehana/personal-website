@@ -15,7 +15,7 @@ type CodeFloatBgProps = {
 };
 
 export default function CodeFloatBg({
-  enableOnMobile = false,
+  enableOnMobile = true,
   tone = "strong",
 }: CodeFloatBgProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
