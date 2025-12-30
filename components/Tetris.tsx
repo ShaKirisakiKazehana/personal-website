@@ -278,13 +278,13 @@ export default function Tetris() {
   const dprRef = useRef(1);
 
   const speedMs = useMemo(() => {
-    // 每 10 行升一级，速度略快
     const base = 700;
     const v = base - (level - 1) * 60;
     return clamp(v, 120, base);
   }, [level]);
 
-  const getBlocks = (a: Active) => PIECES[a.t].blocks[a.rot % 4].map(([dx, dy]) => [a.x + dx, a.y + dy] as const);
+  const getBlocks = (a: Active) =>
+    PIECES[a.t].blocks[a.rot % 4].map(([dx, dy]) => [a.x + dx, a.y + dy] as const);
 
   const collides = (a: Active, board: Cell[][]) => {
     for (const [x, y] of getBlocks(a)) {
@@ -343,8 +343,6 @@ export default function Tetris() {
   const rotate = (dir: 1 | -1) => {
     const s = stateRef.current;
     const r2 = (s.active.rot + (dir === 1 ? 1 : 3)) % 4;
-
-    // 简单 wall-kick：尝试左右挪一点
     const tries = [0, -1, 1, -2, 2];
     for (const k of tries) {
       const a2 = { ...s.active, rot: r2, x: s.active.x + k };
@@ -357,13 +355,15 @@ export default function Tetris() {
 
   const stepDown = (hard = false) => {
     const s = stateRef.current;
+
     if (hard) {
+      // 硬降：只影响当前方块（落地 -> lock -> 清行 -> 生成下一个）
       let a = s.active;
       while (true) {
         const a2 = { ...a, y: a.y + 1 };
         if (collides(a2, s.board)) break;
         a = a2;
-        setScore((sc) => sc + 2); // 硬降奖励
+        setScore((sc) => sc + 2);
       }
       s.active = a;
       lock();
@@ -372,6 +372,7 @@ export default function Tetris() {
       return;
     }
 
+    // 单步下落
     const a2 = { ...s.active, y: s.active.y + 1 };
     if (!collides(a2, s.board)) {
       s.active = a2;
@@ -397,13 +398,12 @@ export default function Tetris() {
     setMode("idle");
   };
 
-  // init
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // keyboard: bind once
+  // keyboard
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -461,7 +461,7 @@ export default function Tetris() {
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     dprRef.current = dpr;
 
-    const ww = W * CELL + 180; // playfield + side panel
+    const ww = W * CELL + 180;
     const hh = H * CELL;
 
     canvas.width = Math.floor(ww * dpr);
@@ -498,7 +498,6 @@ export default function Tetris() {
       const ww = W * CELL + 180;
       const hh = H * CELL;
 
-      // bg
       ctx.clearRect(0, 0, ww, hh);
       ctx.fillStyle = "rgba(7, 12, 22, 1)";
       ctx.fillRect(0, 0, ww, hh);
@@ -574,77 +573,6 @@ export default function Tetris() {
         const ny = 170 + (dy + 1) * 16;
         ctx.fillRect(nx, ny, 14, 14);
       }
-
-    // overlay text (clipped + auto-fit so it never overflows)
-    if (modeRef.current !== "running") {
-        let title = "Press Space to Start";
-        let sub =
-        "A/D: Move · W: Rotate · S: Soft drop · Space: Hard drop · P: Pause";
-        if (modeRef.current === "paused") {
-        title = "Paused";
-        sub = "Press P to resume";
-        }
-        if (modeRef.current === "gameover") {
-        title = "Game Over";
-        sub = "Press R to restart";
-        }
-    
-        const playW = W * CELL;
-        const playH = H * CELL;
-        const pad = 18;
-    
-        // dark overlay
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(0, 0, playW, playH);
-    
-        // clip to playfield so nothing can draw outside
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, playW, playH);
-        ctx.clip();
-    
-        const fitText = (
-        text: string,
-        y: number,
-        maxW: number,
-        fontWeight: number,
-        baseSize: number,
-        minSize: number,
-        color: string
-        ) => {
-        let size = baseSize;
-        while (size > minSize) {
-            ctx.font = `${fontWeight} ${size}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto`;
-            if (ctx.measureText(text).width <= maxW) break;
-            size -= 1;
-        }
-        ctx.fillStyle = color;
-        const tw = ctx.measureText(text).width;
-        ctx.fillText(text, (playW - tw) / 2, y);
-        };
-    
-        // Title
-        fitText(title, playH * 0.52, playW - pad * 2, 800, 28, 16, "rgba(255,255,255,0.95)");
-    
-        // Subtitle: if too long, split into two lines
-        const maxW = playW - pad * 2;
-        ctx.font = `500 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto`;
-        const subW = ctx.measureText(sub).width;
-    
-        if (subW <= maxW) {
-        fitText(sub, playH * 0.52 + 22, maxW, 500, 12, 10, "rgba(255,255,255,0.70)");
-        } else {
-        // simple split near the middle
-        const parts = sub.split(" · ");
-        const mid = Math.ceil(parts.length / 2);
-        const l1 = parts.slice(0, mid).join(" · ");
-        const l2 = parts.slice(mid).join(" · ");
-        fitText(l1, playH * 0.52 + 22, maxW, 500, 12, 10, "rgba(255,255,255,0.70)");
-        fitText(l2, playH * 0.52 + 38, maxW, 500, 12, 10, "rgba(255,255,255,0.70)");
-        }
-    
-        ctx.restore();
-    }
     };
 
     const tick = (now: number) => {
@@ -673,66 +601,118 @@ export default function Tetris() {
     };
   }, [level, lines, score, speedMs]);
 
-  // --- mobile pointer gestures (simple) ---
-  const touchRef = useRef<{ down: boolean; x: number; y: number; moved: boolean }>({
+  // --- mobile gestures ---
+  // 目标：
+  // - 左滑/右滑：移动 1 格
+  // - 上滑：不做事
+  // - 下滑：硬降（当前方块直接落地并锁定，不影响逻辑正确性：会正常 spawn 下一个）
+  // - 点一下：旋转
+  const touchRef = useRef<{
+    down: boolean;
+    sx: number;
+    sy: number;
+    moved: boolean;
+    t0: number;
+  }>({
     down: false,
-    x: 0,
-    y: 0,
+    sx: 0,
+    sy: 0,
     moved: false,
+    t0: 0,
   });
+
+  const SWIPE_MIN = 26;
+  const TAP_MAX_MS = 240;
 
   const onPointerDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLDivElement).focus();
-    touchRef.current = { down: true, x: e.clientX, y: e.clientY, moved: false };
+    touchRef.current.down = true;
+    touchRef.current.sx = e.clientX;
+    touchRef.current.sy = e.clientY;
+    touchRef.current.moved = false;
+    touchRef.current.t0 = performance.now();
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const t = touchRef.current;
     if (!t.down) return;
-    const dx = e.clientX - t.x;
-    const dy = e.clientY - t.y;
-    if (Math.abs(dx) > 18) {
+
+    const dx = e.clientX - t.sx;
+    const dy = e.clientY - t.sy;
+
+    // 一次手势只触发一次动作
+    if (!t.moved && (Math.abs(dx) >= SWIPE_MIN || Math.abs(dy) >= SWIPE_MIN)) {
       t.moved = true;
-      move(dx > 0 ? 1 : -1);
-      t.x = e.clientX;
-    }
-    if (dy > 26) {
-      t.moved = true;
-      stateRef.current.soft = true;
+
+      // 如果未开始/暂停：允许滑动直接开始（你不想要也可以删掉）
+      if (modeRef.current === "idle" || modeRef.current === "paused") {
+        setMode("running");
+        return;
+      }
+      if (modeRef.current !== "running") return;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        move(dx > 0 ? 1 : -1);
+      } else {
+        if (dy > 0) {
+          // 下滑：硬降
+          stepDown(true);
+        } else {
+          // 上滑：做rotate
+          rotate(1);
+        }
+      }
     }
   };
 
   const onPointerUp = () => {
     const t = touchRef.current;
     if (!t.down) return;
-    stateRef.current.soft = false;
-    if (!t.moved) {
-      // tap = rotate/start
+
+    const dt = performance.now() - t.t0;
+
+    if (!t.moved && dt <= TAP_MAX_MS) {
+      // tap：旋转/开始/重开
       if (modeRef.current === "idle") setMode("running");
       else if (modeRef.current === "paused") setMode("running");
       else if (modeRef.current === "running") rotate(1);
       else if (modeRef.current === "gameover") reset();
     }
+
     t.down = false;
+  };
+
+  const onPointerCancel = () => {
+    touchRef.current.down = false;
   };
 
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm opacity-80">Mode: {mode}</div>
+        <div className="text-sm opacity-80">
+          Mode: {mode} · Score: {score} · Lines: {lines} · Level: {level}
+        </div>
+
         <div className="flex items-center gap-2">
           <button
             className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-            onClick={() => setMode("running")}
+            onClick={() => {
+              if (modeRef.current === "gameover") reset();
+              setMode("running");
+            }}
           >
             Start
           </button>
+
           <button
             className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-            onClick={() => setMode((m) => (m === "running" ? "paused" : m))}
+            onClick={() =>
+              setMode((m) => (m === "running" ? "paused" : m === "paused" ? "running" : m))
+            }
           >
-            Pause
+            {mode === "paused" ? "Resume" : "Pause"}
           </button>
+
           <button
             className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
             onClick={reset}
@@ -743,25 +723,31 @@ export default function Tetris() {
       </div>
 
       <div className="flex justify-center">
-    <div
-        className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 w-fit"
-        tabIndex={0}
-        role="application"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-    >
-        <canvas ref={canvasRef} />
-    </div>
-    </div>
+        <div
+          className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 w-fit"
+          style={{ touchAction: "none" }}
+          tabIndex={0}
+          role="application"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+        >
+          <canvas ref={canvasRef} />
+        </div>
+      </div>
 
       <div className="mt-3 text-xs opacity-70 leading-relaxed">
-        Controls: <span className="opacity-90">A/D or ←/→</span> move,{" "}
+        Keyboard: <span className="opacity-90">A/D or ←/→</span> move,{" "}
         <span className="opacity-90">W or ↑</span> rotate,{" "}
         <span className="opacity-90">S or ↓</span> soft drop,{" "}
         <span className="opacity-90">Space</span> hard drop,{" "}
         <span className="opacity-90">P</span> pause, <span className="opacity-90">R</span> restart.
+        <br />
+        Mobile: <span className="opacity-90">Tap</span> rotate,{" "}
+        <span className="opacity-90">Swipe left/right</span> move 1,{" "}
+        <span className="opacity-90">Swipe down</span> hard drop,{" "}
+        <span className="opacity-90">Swipe up</span> (no action).
       </div>
     </div>
   );
