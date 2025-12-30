@@ -8,6 +8,9 @@ type GameKey = "tetris" | "brickbreaker";
 const TetrisClient = dynamic(() => import("../games/tetris/TetrisClient"), { ssr: false });
 const BrickBreakerClient = dynamic(() => import("../games/brickbreaker/BrickBreakerClient"), { ssr: false });
 
+// Local wrapper so we don't pull the scoreboard UI into SSR.
+const Scoreboard = dynamic(() => import("../games/_shared/ScoreboardCard"), { ssr: false });
+
 export default function GamesSection() {
   const [selected, setSelected] = useState<GameKey | null>(null);
   const [showLb, setShowLb] = useState(false);
@@ -51,9 +54,7 @@ export default function GamesSection() {
         */}
         <div className={selected ? "section-inner pt-3 flex-1 flex flex-col" : "section-inner pt-16"}>
           {/* When playing, hide the big section title so the game can take over the screen. */}
-          {!selected && (
-            <h2 className="text-4xl font-semibold tracking-tight">Games</h2>
-          )}
+          {!selected && <h2 className="text-4xl font-semibold tracking-tight">Games</h2>}
           {!selected && (
             <p className="mt-6 text-sm text-neutral-600 max-w-[70ch]">
               Mini games you can play directly in the browser.
@@ -82,64 +83,83 @@ export default function GamesSection() {
             </div>
           ) : (
             <>
-              {/* Top-right action buttons (kept on a single row) */}
+              {/* Game + actions layout:
+                  - Mobile: column (buttons below the game)
+                  - Desktop: row (buttons on the right side, vertical)
+              */}
+              <div className="flex-1 min-h-0 pt-2 flex flex-col md:flex-row md:items-stretch gap-4">
+                {/* Game area */}
+                <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+                  <div
+                    ref={stageRef}
+                    tabIndex={0}
+                    data-no-snap
+                    className="game-stage game-stage--fullscreen game-fullscreen flex-1 min-h-0 rounded-3xl border border-black/10 bg-white/70 outline-none focus:ring-2 focus:ring-black/20"
+                    onKeyDown={(e) => {
+                      const k = e.key;
+                      if (
+                        k === "ArrowUp" ||
+                        k === "ArrowDown" ||
+                        k === "ArrowLeft" ||
+                        k === "ArrowRight" ||
+                        k === " " ||
+                        k === "PageUp" ||
+                        k === "PageDown"
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
+                    style={{
+                      ["--game-h-mobile" as any]: "min(70svh, 520px)",
+                      ["--game-h-desktop" as any]: "min(70vh, 560px)",
+                    }}
+                    
+                  >
+                    {selected === "tetris" ? <TetrisClient /> : <BrickBreakerClient />}
+                  </div>
+                </div>
 
-              {/* Embedded game stage replaces the list (no full navigation / refresh)
-                  Mobile goal: the game should take the whole available viewport. */}
-              <div className="flex-1 flex flex-col min-h-0 pt-2">
+                {/* Action buttons:
+                    - Mobile: below the game (row)
+                    - Desktop: right side (column)
+                */}
                 <div
-                  ref={stageRef}
-                  tabIndex={0}
-                  data-no-snap
-                  className="game-stage game-stage--fullscreen game-fullscreen rounded-3xl border border-black/10 bg-white/70 outline-none focus:ring-2 focus:ring-black/20"
-                  onKeyDown={(e) => {
-                    const k = e.key;
-                    if (
-                      k === "ArrowUp" ||
-                      k === "ArrowDown" ||
-                      k === "ArrowLeft" ||
-                      k === "ArrowRight" ||
-                      k === " " ||
-                      k === "PageUp" ||
-                      k === "PageDown"
-                    ) {
-                      e.preventDefault();
-                    }
-                  }}
-                  style={{
-                    // Let individual games consume as much height as possible.
-                    ["--game-h-mobile" as any]: "calc(100% - 56px)",
-                    ["--game-h-desktop" as any]: "calc(100% - 56px)",
-                  }}
+                  className="
+                    w-full
+                    flex items-center justify-center gap-2 py-3
+                    md:w-[180px] md:py-0
+                    md:flex-col md:items-stretch md:justify-start
+                    md:pt-2
+                  "
                 >
-                  {selected === "tetris" ? <TetrisClient /> : <BrickBreakerClient />}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLb(false);
+                      setSelected(null);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                  >
+                    Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowLb(true)}
+                    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                  >
+                    Leaderboard
+                  </button>
                 </div>
               </div>
 
-              {/* Action buttons below the game UI (no overlay) */}
-              <div className="w-full flex items-center justify-center gap-2 py-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLb(false);
-                    setSelected(null);
-                  }}
-                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
-                >
-                  Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowLb(true)}
-                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
-                >
-                  Leaderboard
-                </button>
-              </div>
               {/* Leaderboard sheet/modal */}
               {showLb && selected && (
-                <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/20 p-4" role="dialog" aria-modal="true">
+                <div
+                  className="fixed inset-0 z-[60] flex items-start justify-center bg-black/20 p-4"
+                  role="dialog"
+                  aria-modal="true"
+                >
                   <div className="leaderboard-sheet w-full max-w-[720px] rounded-3xl border border-black/10 bg-white/95 backdrop-blur p-4 sm:p-6">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold">{title} · Leaderboard</div>
@@ -153,25 +173,15 @@ export default function GamesSection() {
                     </div>
 
                     <div className="mt-4">
-                      {/* Reuse the shared scoreboard UI, but keep it separate from the game stage */}
-                      {selected === "tetris" ? (
-                        // dynamic import path keeps client-only
-                        <Scoreboard game="tetris" />
-                      ) : (
-                        <Scoreboard game="brickbreaker" />
-                      )}
+                      {selected === "tetris" ? <Scoreboard game="tetris" /> : <Scoreboard game="brickbreaker" />}
                     </div>
                   </div>
                 </div>
               )}
             </>
           )}
-
         </div>
       </main>
     </section>
   );
 }
-
-// Local wrapper so we don't pull the scoreboard UI into SSR.
-const Scoreboard = dynamic(() => import("../games/_shared/ScoreboardCard"), { ssr: false });

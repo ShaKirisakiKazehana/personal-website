@@ -15,4 +15,5 @@ export type GameState = {
   next: Exclude<Cell, 0>;
   dropAcc: number;
   soft: boolean;
+  grid: Cell[][];
 };

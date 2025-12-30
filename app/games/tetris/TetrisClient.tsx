@@ -8,22 +8,11 @@ import { tryMove, tryRotate, stepDownOnce } from "./lib/mechanics";
 import { renderFrame } from "./lib/render";
 import { bindKeyboard } from "./input/keyboard";
 import { createTouchHandlers } from "./input/touch";
-import { useScoreboardApi } from "../_shared/useScoreboardApi";
 
 export default function TetrisClient() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const canvasHostRef = useRef<HTMLDivElement | null>(null);
-
-  const [isMobile, setIsMobile] = useState(false);
-  const [canvasScale, setCanvasScale] = useState(1);
-
-  useEffect(() => {
-    const update = () => setIsMobile(window.innerWidth < 640);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
 
   const [mode, setMode] = useState<Mode>("idle");
   const modeRef = useRef<Mode>("idle");
@@ -49,11 +38,9 @@ export default function TetrisClient() {
     levelRef.current = level;
   }, [level]);
 
-  // scoreboard (API only; UI is shown in a separate Leaderboard sheet in GamesSection)
-  const scoreboard = useScoreboardApi("tetris");
-
   const stateRef = useRef<GameState>(initGameState());
   const dprRef = useRef(1);
+  const sizeRef = useRef({ w: 0, h: 0 });
 
   const speedMs = useMemo(() => {
     const base = 700;
@@ -62,7 +49,6 @@ export default function TetrisClient() {
   }, [level]);
 
   const reset = () => {
-    scoreboard.resetPostLock();
     stateRef.current = initGameState();
     setScore(0);
     setLines(0);
@@ -70,10 +56,8 @@ export default function TetrisClient() {
     setMode("idle");
   };
 
-  // init
   useEffect(() => {
     reset();
-    // user assignment happens in the scoreboard hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,7 +72,6 @@ export default function TetrisClient() {
   const applyClearScoring = (cleared: number) => {
     if (cleared <= 0) return;
 
-    // lines + level
     setLines((L) => {
       const nextL = L + cleared;
       const nextLevel = Math.floor(nextL / 10) + 1;
@@ -96,33 +79,19 @@ export default function TetrisClient() {
       return nextL;
     });
 
-    // score
     const addBase = cleared === 1 ? 100 : cleared === 2 ? 300 : cleared === 3 ? 500 : 800;
     const lvl = levelRef.current;
     setScore((sc) => sc + addBase * lvl);
   };
 
-
-
   const step = (hard: boolean) => {
     const res = stepDownOnce(stateRef.current, hard);
 
-    if (res.scoreDelta !== 0) {
-      setScore((sc) => sc + res.scoreDelta);
-    }
-
-    if (res.cleared > 0) {
-      applyClearScoring(res.cleared);
-    }
-
-    if (res.gameover) {
-      setMode("gameover");
-      // ✅only submit once per run
-      scoreboard.postScoreOnce(scoreRef.current);
-    }
+    if (res.scoreDelta !== 0) setScore((sc) => sc + res.scoreDelta);
+    if (res.cleared > 0) applyClearScoring(res.cleared);
+    if (res.gameover) setMode("gameover");
   };
 
-  // keyboard bind
   useEffect(() => {
     return bindKeyboard({
       modeRef,
@@ -132,60 +101,49 @@ export default function TetrisClient() {
       rotate: () => rotate(1),
       rotateCCW: () => rotate(-1),
       hardDrop: () => step(true),
-      // ↓/S：按住第一次触发 hard drop，repeat 忽略（在 keyboard.ts 里处理）
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // canvas setup
-  useEffect(() => {
+  const resizeCanvasToWrapper = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width));
+    const h = Math.max(1, Math.floor(rect.height));
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     dprRef.current = dpr;
+    sizeRef.current = { w, h };
 
-    const ww = W * CELL + 180; // playfield + side panel
-    const hh = H * CELL;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  };
 
-    canvas.width = Math.floor(ww * dpr);
-    canvas.height = Math.floor(hh * dpr);
-    canvas.style.width = `${ww}px`;
-    canvas.style.height = `${hh}px`;
-  }, []);
-
-  // Scale the fixed-size canvas to fit small screens / embedded containers.
   useEffect(() => {
-    const host = canvasHostRef.current;
-    if (!host) return;
+    resizeCanvasToWrapper();
 
-    const ww = W * CELL + 180;
-    const hh = H * CELL;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
 
-    const recompute = () => {
-      const rect = host.getBoundingClientRect();
-      // leave a bit of padding so it doesn't touch the card edges
-      const availableW = Math.max(0, rect.width - 12);
-      const availableH = Math.max(0, rect.height - 12);
-      const scaleW = availableW / ww;
-      const scaleH = availableH / hh;
-      const next = Math.max(0.6, Math.min(1, scaleW, scaleH || scaleW));
-      setCanvasScale(next);
-    };
+    const ro = new ResizeObserver(() => resizeCanvasToWrapper());
+    ro.observe(wrap);
 
-    recompute();
-
-    const ro = new ResizeObserver(() => recompute());
-    ro.observe(host);
-    window.addEventListener("resize", recompute);
+    window.addEventListener("resize", resizeCanvasToWrapper);
+    window.addEventListener("orientationchange", resizeCanvasToWrapper);
 
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", recompute);
+      window.removeEventListener("resize", resizeCanvasToWrapper);
+      window.removeEventListener("orientationchange", resizeCanvasToWrapper);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -216,7 +174,7 @@ export default function TetrisClient() {
         score: scoreRef.current,
         lines: linesRef.current,
         level: levelRef.current,
-      });
+      }, sizeRef.current);
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -227,7 +185,6 @@ export default function TetrisClient() {
     };
   }, [speedMs]);
 
-  // touch handlers（tap/up-swipe rotate, down-swipe hard drop）
   const touch = createTouchHandlers({
     modeRef,
     setMode,
@@ -238,9 +195,8 @@ export default function TetrisClient() {
   });
 
   return (
-    <div className="w-full flex flex-col min-h-0 flex-1">
-      {/* top bar */}
-      <div className="tt-topbar flex items-center justify-between mb-2 sm:mb-3">
+    <div className="w-full h-full min-h-0 flex flex-col">
+      <div className="flex items-center justify-between mb-3">
         <div className="text-sm opacity-80">
           Mode: {mode} · Score: {score} · Lines: {lines} · Level: {level}
         </div>
@@ -274,11 +230,11 @@ export default function TetrisClient() {
         </div>
       </div>
 
-      {/* canvas */}
-      <div className="tt-host flex-1 min-h-0 flex items-start justify-center" ref={canvasHostRef}>
+      <div className="flex-1 min-h-0 flex items-center justify-center">
         <div
-          className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 w-fit"
-          style={{ touchAction: "none", transform: `scale(${canvasScale})`, transformOrigin: "top center" }}
+          ref={wrapRef}
+          className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 w-full h-full flex items-center justify-center"
+          style={{ touchAction: "none" }}
           tabIndex={0}
           role="application"
           onPointerDown={touch.onPointerDown}
@@ -290,16 +246,18 @@ export default function TetrisClient() {
         </div>
       </div>
 
-      <div className="tt-hint mt-3 text-xs opacity-70 leading-relaxed">
+      {/* Desktop 不显示说明，让画布尽量大 */}
+      <div className="mt-3 text-xs opacity-70 leading-relaxed md:hidden">
         Keyboard: <span className="opacity-90">A/D or ←/→</span> move,{" "}
         <span className="opacity-90">W or ↑</span> rotate,{" "}
-        <span className="opacity-90">↓ or S</span> hard drop (hold = once),{" "}
+        <span className="opacity-90">S or ↓</span> soft drop,{" "}
         <span className="opacity-90">Space</span> hard drop,{" "}
         <span className="opacity-90">P</span> pause, <span className="opacity-90">R</span> restart.
         <br />
-        Mobile: <span className="opacity-90">Tap / Swipe up</span> rotate,{" "}
+        Mobile: <span className="opacity-90">Tap</span> rotate,{" "}
         <span className="opacity-90">Swipe left/right</span> move 1,{" "}
-        <span className="opacity-90">Swipe down</span> hard drop.
+        <span className="opacity-90">Swipe down</span> hard drop,{" "}
+        <span className="opacity-90">Swipe up</span> rotate.
       </div>
     </div>
   );

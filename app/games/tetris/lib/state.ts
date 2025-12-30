@@ -16,5 +16,6 @@ export function initGameState(): GameState {
     next: randPiece(),
     dropAcc: 0,
     soft: false,
+    grid: makeBoard(),
   };
 }
