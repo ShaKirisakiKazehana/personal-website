@@ -1,0 +1,13 @@
+{
+  "users": {
+    "a16ea7fa-92d5-4f48-948a-f2ee69c2c39c": {
+      "name": "user1",
+      "best": 204
+    },
+    "ef97f0e0-a569-4315-ae68-51f9e3b29632": {
+      "name": "user2",
+      "best": 200
+    }
+  },
+  "nextUserNum": 3
+}
