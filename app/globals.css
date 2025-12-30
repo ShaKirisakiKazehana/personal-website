@@ -15,6 +15,7 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--fg);
+  overscroll-behavior: none;  
 }
 
 /* Slightly nicer text rendering */

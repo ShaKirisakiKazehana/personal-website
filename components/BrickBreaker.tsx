@@ -19,62 +19,30 @@ type LevelDef = {
   brickH: number;
   gap: number;
   top: number;
-  paddingX: number;
 };
 
 type GameState = {
   left: boolean;
   right: boolean;
 
-  // paddle
   px: number;
   pw: number;
   ph: number;
 
-  // ball
   bx: number;
   by: number;
   br: number;
   vx: number;
   vy: number;
-  served: boolean; // ball has been launched in current life
-  serveLock: boolean; // ball is locked to paddle until launch
+  served: boolean;
+  serveLock: boolean;
 
-  // level
   level: number;
   lives: number;
   bricks: Brick[];
 };
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-
-function buildBricks(level: LevelDef): Brick[] {
-  const bricks: Brick[] = [];
-  const totalW = level.cols * level.brickW + (level.cols - 1) * level.gap;
-  const startX = level.paddingX;
-  const x0 = startX + (Math.max(0, 0.5 * (0 - 0))) + 0; // no-op (kept for readability)
-  const baseX = level.paddingX + Math.max(0, 0.5 * (0 - 0)) + 0;
-
-  // center within available width by computing later in runtime
-  // here we only store relative, actual x will be adjusted when canvas size known
-  for (let r = 0; r < level.rows; r++) {
-    for (let c = 0; c < level.cols; c++) {
-      bricks.push({
-        x: baseX + c * (level.brickW + level.gap),
-        y: level.top + r * (level.brickH + level.gap),
-        w: level.brickW,
-        h: level.brickH,
-        alive: true,
-      });
-    }
-  }
-
-  // We'll re-center them in resetGame() once we know canvas width.
-  // totalW is computed but not used here; kept for clarity.
-  void totalW;
-  void x0;
-  return bricks;
-}
 
 function circleRectHit(
   cx: number,
@@ -92,26 +60,69 @@ function circleRectHit(
   return dx * dx + dy * dy <= r * r;
 }
 
+function scaleLevelToWidth(base: LevelDef, canvasW: number, hudClearPx: number) {
+  const sideMargin = 18;
+  const usableW = Math.max(100, canvasW - sideMargin * 2);
+
+  const baseTotalW = base.cols * base.brickW + (base.cols - 1) * base.gap;
+  const scale = Math.min(1, usableW / baseTotalW);
+
+  const brickW = base.brickW * scale;
+  const brickH = base.brickH * scale;
+  const gap = base.gap * scale;
+
+  const top = Math.max(base.top * scale, hudClearPx);
+
+  const totalW = base.cols * brickW + (base.cols - 1) * gap;
+  const startX = (canvasW - totalW) / 2;
+
+  return { rows: base.rows, cols: base.cols, brickW, brickH, gap, top, startX, totalW, scale };
+}
+
+function buildBricksScaled(level: ReturnType<typeof scaleLevelToWidth>): Brick[] {
+  const bricks: Brick[] = [];
+  for (let r = 0; r < level.rows; r++) {
+    for (let c = 0; c < level.cols; c++) {
+      bricks.push({
+        x: level.startX + c * (level.brickW + level.gap),
+        y: level.top + r * (level.brickH + level.gap),
+        w: level.brickW,
+        h: level.brickH,
+        alive: true,
+      });
+    }
+  }
+  return bricks;
+}
+
 export default function BrickBreaker() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // UI state
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth < 640);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   const [mode, setMode] = useState<Mode>("idle");
   const modeRef = useRef<Mode>("idle");
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
 
-  const [score, setScore] = useState(0);
+  const [scoreUI, setScoreUI] = useState(0);
   const [livesUI, setLivesUI] = useState(3);
   const [levelUI, setLevelUI] = useState(1);
 
   const levels = useMemo<LevelDef[]>(
     () => [
-      { rows: 6, cols: 10, brickW: 76, brickH: 18, gap: 10, top: 55, paddingX: 40 },
-      { rows: 7, cols: 11, brickW: 70, brickH: 18, gap: 9, top: 55, paddingX: 35 },
-      { rows: 8, cols: 12, brickW: 64, brickH: 18, gap: 8, top: 55, paddingX: 30 },
+      { rows: 6, cols: 10, brickW: 76, brickH: 18, gap: 10, top: 55 },
+      { rows: 7, cols: 11, brickW: 70, brickH: 18, gap: 9, top: 55 },
+      { rows: 8, cols: 12, brickW: 64, brickH: 18, gap: 8, top: 55 },
     ],
     []
   );
@@ -134,7 +145,7 @@ export default function BrickBreaker() {
     bricks: [],
   });
 
-  // Size + DPR
+  const uiScaleRef = useRef(1);
   const sizeRef = useRef({ w: 860, h: 520, dpr: 1 });
 
   const resetGame = (toLevel = 1) => {
@@ -142,29 +153,22 @@ export default function BrickBreaker() {
     if (!canvas) return;
 
     const { w, h } = sizeRef.current;
-    const level = levels[clamp(toLevel - 1, 0, levels.length - 1)];
+    const uiScale = uiScaleRef.current;
 
-    // paddle
-    const pw = 120;
-    const ph = 14;
+    const lvlIndex = clamp(toLevel - 1, 0, levels.length - 1);
+    const levelBase = levels[lvlIndex];
+
+    const pw = 120 * uiScale;
+    const ph = 14 * uiScale;
     const px = (w - pw) / 2;
 
-    // ball (locked on paddle until launch)
-    const br = 7;
+    const br = 7 * uiScale;
     const bx = px + pw / 2;
     const by = h - 55 - ph - br;
 
-    // bricks
-    const bricks = buildBricks(level);
-
-    // center bricks based on current canvas width
-    const totalW = level.cols * level.brickW + (level.cols - 1) * level.gap;
-    const startX = (w - totalW) / 2;
-    for (let i = 0; i < bricks.length; i++) {
-      const b = bricks[i];
-      const idx = i % level.cols;
-      b.x = startX + idx * (level.brickW + level.gap);
-    }
+    const hudClearPx = isMobile ? 46 : 40;
+    const scaled = scaleLevelToWidth(levelBase, w, hudClearPx);
+    const bricks = buildBricksScaled(scaled);
 
     stateRef.current = {
       left: false,
@@ -184,7 +188,7 @@ export default function BrickBreaker() {
       bricks,
     };
 
-    setScore(0);
+    setScoreUI(0);
     setLivesUI(3);
     setLevelUI(clamp(toLevel, 1, levels.length));
     setMode("idle");
@@ -208,55 +212,144 @@ export default function BrickBreaker() {
     s.serveLock = false;
     s.served = true;
 
-    // launch with a slight angle
     const angle = (Math.random() * 0.7 + 0.25) * (Math.random() < 0.5 ? -1 : 1);
-    const speed = 6.2;
+    const uiScale = uiScaleRef.current;
+    const speed = 6.2 * uiScale;
+
     s.vx = Math.sin(angle) * speed;
     s.vy = -Math.cos(angle) * speed;
   };
 
-  // Pointer controls (desktop + mobile)
+  // -----------------------------
+  // ✅ Delta-based drag (Safari-safe)
+  // -----------------------------
   const pointerRef = useRef({
     active: false,
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    startT: 0,
     lastX: 0,
+    moved: false,
   });
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    pointerRef.current.active = true;
-    pointerRef.current.lastX = e.clientX;
+  const TAP_MS = 220;
+  const TAP_MOVE_PX = 10;
+
+  const handleTapAction = () => {
+    const m = modeRef.current;
+    if (m === "idle") setMode("running");
+    else if (m === "running") launchBall();
+    else if (m === "paused") setMode("running");
+    else if (m === "gameover" || m === "win") resetGame(1);
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!pointerRef.current.active) return;
-    const dx = e.clientX - pointerRef.current.lastX;
-    pointerRef.current.lastX = e.clientX;
+  // Gain based on screen size (feel free to tweak)
+  const calcMobileGain = () => {
+    const { w } = sizeRef.current;
+    // w ~ 320..860
+    // smaller screen => need larger gain so it feels responsive
+    // clamp into a safe range
+    return clamp(860 / Math.max(320, w), 1.0, 1.5);
+  };
 
+  const applyDeltaMove = (deltaClientX: number) => {
     const s = stateRef.current;
     const { w } = sizeRef.current;
-    s.px = clamp(s.px + dx, 10, w - s.pw - 10);
-    if (s.serveLock) {
-      s.bx = s.px + s.pw / 2;
+
+    // convert CSS delta to game delta if container is scaled
+    // (important if wrap width != game width)
+    const wrap = wrapRef.current;
+    let scaleX = 1;
+    if (wrap) {
+      const rect = wrap.getBoundingClientRect();
+      if (rect.width > 0) scaleX = w / rect.width;
     }
+
+    const uiScale = uiScaleRef.current;
+    const gain = isMobile ? calcMobileGain() : 1;
+
+    const deltaGameX = deltaClientX * scaleX * gain;
+
+    s.px = clamp(s.px + deltaGameX, 10, w - s.pw - 10);
+    if (s.serveLock) s.bx = s.px + s.pw / 2;
   };
 
-  const onPointerUp = () => {
-    pointerRef.current.active = false;
+  // We bind move/up on window during an active drag to avoid iOS Safari dropping events.
+  const moveListenerRef = useRef<((ev: PointerEvent) => void) | null>(null);
+  const upListenerRef = useRef<((ev: PointerEvent) => void) | null>(null);
+
+  const stopWindowListeners = () => {
+    if (moveListenerRef.current) window.removeEventListener("pointermove", moveListenerRef.current);
+    if (upListenerRef.current) window.removeEventListener("pointerup", upListenerRef.current);
+    if (upListenerRef.current)
+      window.removeEventListener("pointercancel", upListenerRef.current as any);
+    moveListenerRef.current = null;
+    upListenerRef.current = null;
   };
 
-  // --- KEYBOARD (bind once; use refs for latest state) ---
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!e.isPrimary) return;
+
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+
+    const p = pointerRef.current;
+    p.active = true;
+    p.pointerId = e.pointerId;
+    p.startX = e.clientX;
+    p.startY = e.clientY;
+    p.startT = performance.now();
+    p.lastX = e.clientX;
+    p.moved = false;
+
+    // bind window listeners (Safari stability)
+    const onMove = (ev: PointerEvent) => {
+      const pp = pointerRef.current;
+      if (!pp.active) return;
+      if (ev.pointerId !== pp.pointerId) return;
+
+      const dx = ev.clientX - pp.lastX;
+      if (dx !== 0) {
+        pp.moved = true;
+        applyDeltaMove(dx);
+        pp.lastX = ev.clientX;
+      }
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      const pp = pointerRef.current;
+      if (!pp.active) return;
+      if (ev.pointerId !== pp.pointerId) return;
+
+      pp.active = false;
+      stopWindowListeners();
+
+      const elapsed = performance.now() - pp.startT;
+      const movedX = Math.abs(ev.clientX - pp.startX);
+      const movedY = Math.abs(ev.clientY - pp.startY);
+
+      const isTap = !pp.moved && elapsed <= TAP_MS && movedX <= TAP_MOVE_PX && movedY <= TAP_MOVE_PX;
+      if (isTap) handleTapAction();
+    };
+
+    moveListenerRef.current = onMove;
+    upListenerRef.current = onUp;
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onUp as any, { passive: true });
+  };
+
+  // Keyboard
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      // Don't steal keys while typing into inputs/textareas/editors
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || (target as any)?.isContentEditable) return;
 
       const s = stateRef.current;
 
-      // Prevent Space/Arrow keys from scrolling the page
-      if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-      }
+      if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") e.preventDefault();
 
       if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") s.left = true;
       if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") s.right = true;
@@ -274,9 +367,7 @@ export default function BrickBreaker() {
         setMode((cur) => (cur === "running" ? "paused" : cur === "paused" ? "running" : cur));
       }
 
-      if (e.key.toLowerCase() === "r") {
-        resetGame(1);
-      }
+      if (e.key.toLowerCase() === "r") resetGame(1);
     };
 
     const up = (e: KeyboardEvent) => {
@@ -291,9 +382,9 @@ export default function BrickBreaker() {
       window.removeEventListener("keydown", down as any, { passive: false } as any);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [levels]);
 
-  // Setup canvas sizing
+  // Canvas sizing
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -313,23 +404,63 @@ export default function BrickBreaker() {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
 
-      // init if empty
+      uiScaleRef.current = clamp(w / 860, 0.6, 1);
+
       if (stateRef.current.bricks.length === 0) {
         resetGame(1);
       } else {
-        // keep paddle/ball within bounds
         const s = stateRef.current;
-        s.px = clamp(s.px, 10, w - s.pw - 10);
+        const uiScale = uiScaleRef.current;
+
+        const oldPw = s.pw;
+        const oldBr = s.br;
+
+        s.pw = 120 * uiScale;
+        s.ph = 14 * uiScale;
+        s.br = 7 * uiScale;
+
+        const oldCenter = s.px + oldPw / 2;
+        s.px = clamp(oldCenter - s.pw / 2, 10, w - s.pw - 10);
+
         if (s.serveLock) s.bx = s.px + s.pw / 2;
-        s.by = clamp(s.by, 10, h - 10);
+
+        s.bx = clamp(s.bx, s.br, w - s.br);
+        s.by = clamp(s.by, s.br, h - s.br);
+
+        const lvlIndex = clamp(s.level - 1, 0, levels.length - 1);
+        const levelBase = levels[lvlIndex];
+
+        const hudClearPx = isMobile ? 46 : 40;
+        const scaled = scaleLevelToWidth(levelBase, w, hudClearPx);
+        const newBricks = buildBricksScaled(scaled);
+
+        for (let i = 0; i < newBricks.length && i < s.bricks.length; i++) {
+          newBricks[i].alive = s.bricks[i].alive;
+        }
+        s.bricks = newBricks;
+
+        if (s.serveLock) {
+          s.by = h - 55 - s.ph - s.br;
+        } else {
+          if (Math.abs(oldBr - s.br) > 0.01) {
+            s.by = clamp(s.by, s.br, h - s.br);
+          }
+        }
       }
     };
 
     resize();
+
+    const ro = new ResizeObserver(() => resize());
+    if (wrapRef.current) ro.observe(wrapRef.current);
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", resize);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [levels, isMobile]);
 
   // Game loop
   useEffect(() => {
@@ -338,33 +469,25 @@ export default function BrickBreaker() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let last = performance.now();
-
-    const tick = (now: number) => {
-      const dt = Math.min(32, now - last);
-      last = now;
-
+    const tick = () => {
       const { w, h, dpr } = sizeRef.current;
       const s = stateRef.current;
 
-      // update
       if (modeRef.current === "running") {
-        // paddle movement
-        const speed = 8;
+        const uiScale = uiScaleRef.current;
+        const speed = 8 * uiScale;
+
         if (s.left) s.px -= speed;
         if (s.right) s.px += speed;
         s.px = clamp(s.px, 10, w - s.pw - 10);
 
-        // ball follows paddle until launched
         if (s.serveLock) {
           s.bx = s.px + s.pw / 2;
           s.by = h - 55 - s.ph - s.br;
         } else {
-          // move ball
           s.bx += s.vx;
           s.by += s.vy;
 
-          // walls
           if (s.bx - s.br < 0) {
             s.bx = s.br;
             s.vx *= -1;
@@ -378,33 +501,27 @@ export default function BrickBreaker() {
             s.vy *= -1;
           }
 
-          // paddle collision
           const paddleY = h - 55 - s.ph;
-          if (
-            circleRectHit(s.bx, s.by, s.br, s.px, paddleY, s.pw, s.ph) &&
-            s.vy > 0
-          ) {
-            // reflect based on where it hits the paddle
+          if (circleRectHit(s.bx, s.by, s.br, s.px, paddleY, s.pw, s.ph) && s.vy > 0) {
             const hit = (s.bx - (s.px + s.pw / 2)) / (s.pw / 2);
             const speedMag = Math.hypot(s.vx, s.vy);
-            const maxAngle = Math.PI / 3; // 60deg
+            const maxAngle = Math.PI / 3;
             const ang = hit * maxAngle;
             s.vx = Math.sin(ang) * speedMag;
             s.vy = -Math.cos(ang) * speedMag;
             s.by = paddleY - s.br - 0.5;
           }
 
-          // brick collisions
           let aliveCount = 0;
           for (let i = 0; i < s.bricks.length; i++) {
             const b = s.bricks[i];
             if (!b.alive) continue;
             aliveCount++;
+
             if (circleRectHit(s.bx, s.by, s.br, b.x, b.y, b.w, b.h)) {
               b.alive = false;
-              setScore((sc) => sc + 10);
+              setScoreUI((sc) => sc + 10);
 
-              // basic bounce: decide axis by penetration direction
               const cx = s.bx;
               const cy = s.by;
               const nx = clamp(cx, b.x, b.x + b.w);
@@ -418,37 +535,27 @@ export default function BrickBreaker() {
             }
           }
 
-          // win condition
           if (aliveCount === 0) {
             const next = s.level + 1;
             if (next > levels.length) {
               setMode("win");
             } else {
-              // next level
-              const levelDef = levels[next - 1];
-              const bricks = buildBricks(levelDef);
-              const totalW = levelDef.cols * levelDef.brickW + (levelDef.cols - 1) * levelDef.gap;
-              const startX = (w - totalW) / 2;
-              for (let i = 0; i < bricks.length; i++) {
-                const b = bricks[i];
-                const idx = i % levelDef.cols;
-                b.x = startX + idx * (levelDef.brickW + levelDef.gap);
-              }
+              const base = levels[next - 1];
+              const hudClearPx = isMobile ? 46 : 40;
+              const scaled = scaleLevelToWidth(base, w, hudClearPx);
               s.level = next;
-              s.bricks = bricks;
+              s.bricks = buildBricksScaled(scaled);
               setLevelUI(next);
               resetLife();
               setMode("idle");
             }
           }
 
-          // lose life
           if (s.by - s.br > h + 10) {
             s.lives -= 1;
             setLivesUI(s.lives);
-            if (s.lives <= 0) {
-              setMode("gameover");
-            } else {
+            if (s.lives <= 0) setMode("gameover");
+            else {
               resetLife();
               setMode("idle");
             }
@@ -456,15 +563,11 @@ export default function BrickBreaker() {
         }
       }
 
-      // render
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // background
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = "rgba(7, 12, 22, 1)";
       ctx.fillRect(0, 0, w, h);
 
-      // grid overlay
       ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.lineWidth = 1;
       const grid = 28;
@@ -481,66 +584,56 @@ export default function BrickBreaker() {
         ctx.stroke();
       }
 
-      // HUD top-left
-      ctx.fillStyle = "rgba(255,255,255,0.92)";
-      ctx.font = "600 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
-      ctx.fillText(`Score: ${score}`, 18, 24);
-      ctx.fillText(`Lives: ${livesUI}`, 110, 24);
-      ctx.fillText(`Level: ${levelUI}`, 190, 24);
-
-      // bricks
       for (const b of s.bricks) {
         if (!b.alive) continue;
-        // simple beveled brick
         ctx.fillStyle = "rgba(100, 215, 255, 0.92)";
         ctx.fillRect(b.x, b.y, b.w, b.h);
         ctx.fillStyle = "rgba(255,255,255,0.18)";
-        ctx.fillRect(b.x, b.y, b.w, 4);
+        ctx.fillRect(b.x, b.y, b.w, Math.max(2, b.h * 0.22));
         ctx.fillStyle = "rgba(0,0,0,0.18)";
-        ctx.fillRect(b.x, b.y + b.h - 4, b.w, 4);
+        ctx.fillRect(b.x, b.y + b.h - Math.max(2, b.h * 0.22), b.w, Math.max(2, b.h * 0.22));
         ctx.fillStyle = "rgba(0,0,0,0.08)";
-        ctx.fillRect(b.x + 3, b.y + 3, b.w - 6, b.h - 6);
+        ctx.fillRect(b.x + 3, b.y + 3, Math.max(0, b.w - 6), Math.max(0, b.h - 6));
       }
 
-      // paddle
       const paddleY = h - 55 - s.ph;
       ctx.fillStyle = "rgba(255,255,255,0.92)";
-      const r = 8;
-      // rounded rect
+      const rr = 8 * uiScaleRef.current;
       ctx.beginPath();
-      ctx.moveTo(s.px + r, paddleY);
-      ctx.arcTo(s.px + s.pw, paddleY, s.px + s.pw, paddleY + s.ph, r);
-      ctx.arcTo(s.px + s.pw, paddleY + s.ph, s.px, paddleY + s.ph, r);
-      ctx.arcTo(s.px, paddleY + s.ph, s.px, paddleY, r);
-      ctx.arcTo(s.px, paddleY, s.px + s.pw, paddleY, r);
+      ctx.moveTo(s.px + rr, paddleY);
+      ctx.arcTo(s.px + s.pw, paddleY, s.px + s.pw, paddleY + s.ph, rr);
+      ctx.arcTo(s.px + s.pw, paddleY + s.ph, s.px, paddleY + s.ph, rr);
+      ctx.arcTo(s.px, paddleY + s.ph, s.px, paddleY, rr);
+      ctx.arcTo(s.px, paddleY, s.px + s.pw, paddleY, rr);
       ctx.closePath();
       ctx.fill();
 
-      // ball
       ctx.beginPath();
       ctx.arc(s.bx, s.by, s.br, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.95)";
       ctx.fill();
 
-      // center overlay text
       if (modeRef.current !== "running") {
         let title = "Brick Breaker";
-        let subtitle = "Space: Start / Launch · A/D or ←/→ Move · P: Pause";
+        let subtitle = isMobile
+          ? "Tap: start / launch · Drag: move"
+          : "Space: Start/Launch · A/D or ←/→ Move · P: Pause";
+
         if (modeRef.current === "paused") {
           title = "Paused";
-          subtitle = "Press P to resume";
+          subtitle = isMobile ? "Tap to resume" : "Press P to resume";
         }
         if (modeRef.current === "gameover") {
           title = "Game Over";
-          subtitle = "Press Space/Enter to restart";
+          subtitle = isMobile ? "Tap to restart" : "Press Space/Enter to restart";
         }
         if (modeRef.current === "win") {
           title = "You Win!";
-          subtitle = "Press Space/Enter to play again";
+          subtitle = isMobile ? "Tap to play again" : "Press Space/Enter to play again";
         }
 
         ctx.fillStyle = "rgba(255,255,255,0.92)";
-        ctx.font = "800 38px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+        ctx.font = `800 ${isMobile ? 28 : 38}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto`;
         const tw = ctx.measureText(title).width;
         ctx.fillText(title, (w - tw) / 2, h * 0.58);
 
@@ -557,43 +650,54 @@ export default function BrickBreaker() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [levels, levelUI, livesUI, score]);
+  }, [levels, isMobile]);
 
-  // initial
   useEffect(() => {
     resetGame(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const gameHeight = isMobile ? "min(70vh, 520px)" : "520px";
+  const buttonBase =
+    "rounded-full border border-white/10 bg-white/5 hover:bg-white/10 active:bg-white/15";
+  const buttonCls = isMobile
+    ? `text-sm px-4 py-2 ${buttonBase}`
+    : `text-sm px-3 py-1.5 ${buttonBase}`;
+
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm opacity-80">{mode === "running" ? "Running" : mode}</div>
+      <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between sm:justify-start gap-3">
+          <div className="text-sm opacity-80">{mode === "running" ? "Running" : mode}</div>
+          <div className="text-xs opacity-80">
+            Score <span className="opacity-100 tabular-nums">{scoreUI}</span> · Lives{" "}
+            <span className="opacity-100 tabular-nums">{livesUI}</span> · L{" "}
+            <span className="opacity-100 tabular-nums">{levelUI}</span>
+          </div>
+        </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-            onClick={() => setMode("running")}
-          >
-            Launch
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={buttonCls} onClick={() => setMode("running")}>
+            Start
+          </button>
+          <button className={buttonCls} onClick={() => launchBall()}>
+            Fire
           </button>
           <button
-            className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
+            className={buttonCls}
             onClick={() => setMode((m) => (m === "running" ? "paused" : m))}
           >
             Pause
           </button>
-          <button
-            className="text-sm px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-            onClick={() => resetGame(1)}
-          >
+          <button className={buttonCls} onClick={() => resetGame(1)}>
             Reset
           </button>
         </div>
       </div>
 
       <div
-        className="rounded-2xl overflow-hidden border border-white/10 bg-black/20"
+        ref={wrapRef}
+        className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 select-none"
         tabIndex={0}
         role="application"
         onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
@@ -601,20 +705,25 @@ export default function BrickBreaker() {
           (e.currentTarget as HTMLDivElement).focus();
           onPointerDown(e);
         }}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        style={{ width: "100%", height: 520 }}
+        style={{ width: "100%", height: gameHeight, touchAction: "none" }}
       >
         <canvas ref={canvasRef} />
       </div>
 
       <div className="mt-3 text-xs opacity-70 leading-relaxed">
-        Controls: <span className="opacity-90">A/D or ←/→</span> move,{" "}
-        <span className="opacity-90">Space/Enter</span> start & launch,{" "}
-        <span className="opacity-90">P</span> pause, <span className="opacity-90">R</span> restart.
-        <br />
-        Mobile: drag to move paddle, tap to start/launch.
+        {isMobile ? (
+          <>
+            Mobile: <span className="opacity-90">Drag</span> to move (delta-based),{" "}
+            <span className="opacity-90">Tap</span> to start/launch.
+          </>
+        ) : (
+          <>
+            Desktop: <span className="opacity-90">A/D or ←/→</span> move,{" "}
+            <span className="opacity-90">Space/Enter</span> start & launch,{" "}
+            <span className="opacity-90">P</span> pause, <span className="opacity-90">R</span>{" "}
+            restart.
+          </>
+        )}
       </div>
     </div>
   );
