@@ -146,6 +146,31 @@ export default function FullPageScroll({
     // Hash navigation (navbar links on landing page)
     window.addEventListener("hashchange", scrollToHash);
 
+    // Allow other components (e.g. Navbar) to request a snap step / go-to.
+    const onStepEvent = (e: Event) => {
+      const ce = e as CustomEvent<{ dir?: 1 | -1 }>;
+      const dir = ce.detail?.dir;
+      if (dir === 1 || dir === -1) step(dir);
+    };
+
+    const onGoEvent = (e: Event) => {
+      const ce = e as CustomEvent<{ key?: string; id?: string }>;
+      const want = ce.detail?.key || ce.detail?.id;
+      if (!want) return;
+
+      const list = Array.from(el.querySelectorAll(sectionSelector)) as HTMLElement[];
+      const targetIdx = list.findIndex(
+        (s) => s.id === want || s.getAttribute("data-section") === want
+      );
+      if (targetIdx >= 0) {
+        scrollToIndex(targetIdx);
+        setActiveIndex(targetIdx);
+      }
+    };
+
+    window.addEventListener("fullpagescroll:step", onStepEvent as any);
+    window.addEventListener("fullpagescroll:go", onGoEvent as any);
+
 
     const onWheel = (e: WheelEvent) => {
       // If the user is interacting with an embedded widget/game, don't hijack scrolling.
@@ -230,6 +255,8 @@ export default function FullPageScroll({
       el.removeEventListener("touchstart", onTouchStart as any);
       el.removeEventListener("touchend", onTouchEnd as any);
       window.removeEventListener("hashchange", scrollToHash as any);
+      window.removeEventListener("fullpagescroll:step", onStepEvent as any);
+      window.removeEventListener("fullpagescroll:go", onGoEvent as any);
     };
   }, [lockMs, sectionSelector]);
 
