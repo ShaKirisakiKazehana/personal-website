@@ -69,14 +69,9 @@ export default function TetrisClient() {
     tryRotate(stateRef.current, dir);
   };
 
-  const setSoft = (v: boolean) => {
-    stateRef.current.soft = v;
-  };
-
   const applyClearScoring = (cleared: number) => {
     if (cleared <= 0) return;
 
-    // lines + level
     setLines((L) => {
       const nextL = L + cleared;
       const nextLevel = Math.floor(nextL / 10) + 1;
@@ -84,7 +79,6 @@ export default function TetrisClient() {
       return nextL;
     });
 
-    // score (按“当前level”加分：跟你原逻辑一致)
     const addBase = cleared === 1 ? 100 : cleared === 2 ? 300 : cleared === 3 ? 500 : 800;
     const lvl = levelRef.current;
     setScore((sc) => sc + addBase * lvl);
@@ -116,12 +110,11 @@ export default function TetrisClient() {
       rotate: () => rotate(1),
       rotateCCW: () => rotate(-1),
       hardDrop: () => step(true),
-      setSoft,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // canvas setup (固定像素尺寸)
+  // canvas setup
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -155,7 +148,8 @@ export default function TetrisClient() {
         const s = stateRef.current;
         s.dropAcc += dt;
 
-        const interval = s.soft ? Math.max(40, speedMs * 0.08) : speedMs;
+        // ✅不再根据 soft 改 interval（软降模式已取消）
+        const interval = speedMs;
 
         while (s.dropAcc >= interval) {
           s.dropAcc -= interval;
@@ -180,7 +174,7 @@ export default function TetrisClient() {
     };
   }, [speedMs]);
 
-  // touch handlers
+  // touch handlers（保持不变：下滑 hard drop，上滑/点击 rotate）
   const touch = createTouchHandlers({
     modeRef,
     setMode,
@@ -244,7 +238,7 @@ export default function TetrisClient() {
       <div className="mt-3 text-xs opacity-70 leading-relaxed">
         Keyboard: <span className="opacity-90">A/D or ←/→</span> move,{" "}
         <span className="opacity-90">W or ↑</span> rotate,{" "}
-        <span className="opacity-90">S or ↓</span> soft drop,{" "}
+        <span className="opacity-90">S or ↓</span> step down 1,{" "}
         <span className="opacity-90">Space</span> hard drop,{" "}
         <span className="opacity-90">P</span> pause, <span className="opacity-90">R</span> restart.
         <br />

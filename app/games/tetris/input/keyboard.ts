@@ -8,7 +8,6 @@ export function bindKeyboard(args: {
   rotate: () => void;
   rotateCCW: () => void;
   hardDrop: () => void;
-  setSoft: (v: boolean) => void;
 }) {
   const down = (e: KeyboardEvent) => {
     const target = e.target as HTMLElement | null;
@@ -39,22 +38,22 @@ export function bindKeyboard(args: {
 
     if (m !== "running") return;
 
+    // ✅按住 ↓ / S：第一次触发就硬降到底；后续 repeat 全忽略（不会影响下一个方块）
+    if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") {
+      if (e.repeat) return;     // 关键：屏蔽长按重复事件
+      args.hardDrop();          // 直接到底
+      return;
+    }
+
     if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") args.move(-1);
     if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") args.move(1);
     if (e.key === "ArrowUp" || e.key.toLowerCase() === "w") args.rotate();
     if (e.key.toLowerCase() === "q") args.rotateCCW();
-    if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") args.setSoft(true);
-  };
-
-  const up = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") args.setSoft(false);
   };
 
   window.addEventListener("keydown", down, { passive: false });
-  window.addEventListener("keyup", up);
 
   return () => {
     window.removeEventListener("keydown", down as any);
-    window.removeEventListener("keyup", up);
   };
 }
