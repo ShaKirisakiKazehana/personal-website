@@ -1,4 +1,4 @@
-import Tetris from "@/components/Tetris";
+import TetrisClient from "./TetrisClient";
 
 export default function TetrisPage() {
   return (
@@ -8,7 +8,7 @@ export default function TetrisPage() {
         <p className="mt-2 opacity-80">Canvas + requestAnimationFrame 俄罗斯方块。</p>
 
         <div className="mt-6">
-          <Tetris />
+          <TetrisClient />
         </div>
       </div>
     </main>
