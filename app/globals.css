@@ -18,5 +18,25 @@ body {
   overscroll-behavior: none;  
 }
 
+/*
+  Full-page scroll experience ("scroll down -> next page/section")
+  Usage: wrap sections in a .snap-container and mark each section with .snap-section.
+*/
+.snap-container{
+  height: 100vh;
+  height: 100svh; /* better on mobile when browser toolbars expand/collapse */
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.snap-section{
+  min-height: 100vh;
+  min-height: 100svh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
 /* Slightly nicer text rendering */
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
