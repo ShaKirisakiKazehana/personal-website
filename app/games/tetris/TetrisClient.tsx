@@ -8,10 +8,22 @@ import { tryMove, tryRotate, stepDownOnce } from "./lib/mechanics";
 import { renderFrame } from "./lib/render";
 import { bindKeyboard } from "./input/keyboard";
 import { createTouchHandlers } from "./input/touch";
+import { useScoreboardApi } from "../_shared/useScoreboardApi";
 
 export default function TetrisClient() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
+
+  const [isMobile, setIsMobile] = useState(false);
+  const [canvasScale, setCanvasScale] = useState(1);
+
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth < 640);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const [mode, setMode] = useState<Mode>("idle");
   const modeRef = useRef<Mode>("idle");
@@ -37,21 +49,8 @@ export default function TetrisClient() {
     levelRef.current = level;
   }, [level]);
 
-  // --- Leaderboard / identity ---
-  const [userName, setUserName] = useState<string>("user?");
-  const [leaderboard, setLeaderboard] = useState<Array<{ name: string; best: number }>>([]);
-  const postedRef = useRef(false);
-
-  const refreshBoard = async () => {
-    try {
-      const r = await fetch("/api/tetris", { method: "GET" });
-      const j = await r.json();
-      setUserName(j.user?.name ?? "user?");
-      setLeaderboard(j.leaderboard ?? []);
-    } catch {
-      // ignore
-    }
-  };
+  // scoreboard (API only; UI is shown in a separate Leaderboard sheet in GamesSection)
+  const scoreboard = useScoreboardApi("tetris");
 
   const stateRef = useRef<GameState>(initGameState());
   const dprRef = useRef(1);
@@ -63,7 +62,7 @@ export default function TetrisClient() {
   }, [level]);
 
   const reset = () => {
-    postedRef.current = false; // ✅新一局允许再次提交
+    scoreboard.resetPostLock();
     stateRef.current = initGameState();
     setScore(0);
     setLines(0);
@@ -74,7 +73,7 @@ export default function TetrisClient() {
   // init
   useEffect(() => {
     reset();
-    refreshBoard(); // ✅进入页面就分配 user + 拉排行榜
+    // user assignment happens in the scoreboard hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -103,21 +102,7 @@ export default function TetrisClient() {
     setScore((sc) => sc + addBase * lvl);
   };
 
-  const postScoreOnce = (finalScore: number) => {
-    if (postedRef.current) return;
-    postedRef.current = true;
 
-    fetch("/api/tetris", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score: finalScore }),
-    })
-      .then((r) => r.json())
-      .then((j) => {
-        if (j?.leaderboard) setLeaderboard(j.leaderboard);
-      })
-      .catch(() => {});
-  };
 
   const step = (hard: boolean) => {
     const res = stepDownOnce(stateRef.current, hard);
@@ -132,8 +117,8 @@ export default function TetrisClient() {
 
     if (res.gameover) {
       setMode("gameover");
-      // ✅只提交一次：用 ref 的最新分数
-      postScoreOnce(scoreRef.current);
+      // ✅only submit once per run
+      scoreboard.postScoreOnce(scoreRef.current);
     }
   };
 
@@ -167,6 +152,37 @@ export default function TetrisClient() {
     canvas.height = Math.floor(hh * dpr);
     canvas.style.width = `${ww}px`;
     canvas.style.height = `${hh}px`;
+  }, []);
+
+  // Scale the fixed-size canvas to fit small screens / embedded containers.
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    if (!host) return;
+
+    const ww = W * CELL + 180;
+    const hh = H * CELL;
+
+    const recompute = () => {
+      const rect = host.getBoundingClientRect();
+      // leave a bit of padding so it doesn't touch the card edges
+      const availableW = Math.max(0, rect.width - 12);
+      const availableH = Math.max(0, rect.height - 12);
+      const scaleW = availableW / ww;
+      const scaleH = availableH / hh;
+      const next = Math.max(0.6, Math.min(1, scaleW, scaleH || scaleW));
+      setCanvasScale(next);
+    };
+
+    recompute();
+
+    const ro = new ResizeObserver(() => recompute());
+    ro.observe(host);
+    window.addEventListener("resize", recompute);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
   }, []);
 
   // loop
@@ -222,9 +238,9 @@ export default function TetrisClient() {
   });
 
   return (
-    <div className="w-full">
+    <div className="w-full flex flex-col min-h-0 flex-1">
       {/* top bar */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="tt-topbar flex items-center justify-between mb-2 sm:mb-3">
         <div className="text-sm opacity-80">
           Mode: {mode} · Score: {score} · Lines: {lines} · Level: {level}
         </div>
@@ -258,46 +274,11 @@ export default function TetrisClient() {
         </div>
       </div>
 
-      {/* leaderboard */}
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-          <div className="text-sm opacity-70">You are</div>
-          <div className="text-lg font-semibold">{userName}</div>
-          <div className="mt-2 text-xs opacity-70">
-            Best score is stored on server (updates on Game Over).
-          </div>
-          <button
-            className="mt-3 text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-            onClick={refreshBoard}
-          >
-            Refresh leaderboard
-          </button>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-          <div className="text-sm opacity-70">Leaderboard (Top 10)</div>
-          <div className="mt-2 space-y-1">
-            {leaderboard.length === 0 ? (
-              <div className="text-xs opacity-60">No data yet.</div>
-            ) : (
-              leaderboard.map((u, i) => (
-                <div key={`${u.name}-${i}`} className="flex justify-between text-sm">
-                  <span className="opacity-90">
-                    {i + 1}. {u.name}
-                  </span>
-                  <span className="tabular-nums opacity-90">{u.best}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* canvas */}
-      <div className="flex justify-center">
+      <div className="tt-host flex-1 min-h-0 flex items-start justify-center" ref={canvasHostRef}>
         <div
           className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 w-fit"
-          style={{ touchAction: "none" }}
+          style={{ touchAction: "none", transform: `scale(${canvasScale})`, transformOrigin: "top center" }}
           tabIndex={0}
           role="application"
           onPointerDown={touch.onPointerDown}
@@ -309,7 +290,7 @@ export default function TetrisClient() {
         </div>
       </div>
 
-      <div className="mt-3 text-xs opacity-70 leading-relaxed">
+      <div className="tt-hint mt-3 text-xs opacity-70 leading-relaxed">
         Keyboard: <span className="opacity-90">A/D or ←/→</span> move,{" "}
         <span className="opacity-90">W or ↑</span> rotate,{" "}
         <span className="opacity-90">↓ or S</span> hard drop (hold = once),{" "}

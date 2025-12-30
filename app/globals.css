@@ -2,6 +2,7 @@
 
 /* Global design tokens */
 :root{
+  --nav-h: 72px;
   --bg: #ffffff;
   --fg: #0a0a0a;
   --muted: #6b7280;
@@ -23,8 +24,10 @@ body {
   Usage: wrap sections in a .snap-container and mark each section with .snap-section.
 */
 .snap-container{
-  height: 100vh;
-  height: 100svh; /* better on mobile when browser toolbars expand/collapse */
+  /* Keep the navbar fixed while the content "pages" scroll under it */
+  height: calc(100vh - var(--nav-h));
+  height: calc(100svh - var(--nav-h)); /* better on mobile when browser toolbars expand/collapse */
+  margin-top: var(--nav-h);
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
@@ -32,11 +35,131 @@ body {
 }
 
 .snap-section{
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: calc(100vh - var(--nav-h));
+  min-height: calc(100svh - var(--nav-h));
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
+
+/* Active-section effects (FullPageScroll toggles data-active) */
+.snap-section .section-inner{
+  opacity: 0.35;
+  transform: translateY(14px);
+  filter: blur(2px);
+  transition: opacity 500ms ease, transform 500ms ease, filter 500ms ease;
+}
+
+.snap-section[data-active="true"] .section-inner{
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+
+/* Per-section effects (trigger only when that section becomes active) */
+.snap-section[data-section="about"] .section-inner{
+  transform: translateY(22px) scale(0.99);
+  opacity: 0.92;
+}
+.snap-section[data-section="about"][data-active="true"] .section-inner{
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.snap-section[data-section="resume"] .section-inner{
+  transform: translateY(28px);
+  filter: blur(1.5px);
+  opacity: 0.9;
+}
+.snap-section[data-section="resume"][data-active="true"] .section-inner{
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+}
+
+.snap-section[data-section="games"] .section-inner{
+  transform: translateY(18px) scale(0.985);
+  opacity: 0.92;
+}
+.snap-section[data-section="games"][data-active="true"] .section-inner{
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* When a game is embedded inside the Games section, keep the playable area visible on mobile.
+   We allow internal scrolling within the card rather than pushing the canvas below the fold. */
+.game-stage{
+  overflow: auto;
+  max-height: calc(100svh - var(--nav-h) - 180px);
+}
+
+/* When actively playing a game inside the Games section, prioritize the playable area.
+   The controls stay visible, and the card itself should not push the canvas off-screen. */
+.game-stage--play{
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: calc(100svh - var(--nav-h) - 150px);
+}
+
+/* Fullscreen-style embedded game (Games section -> playing). */
+.game-stage--fullscreen{
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+}
+
+/* In fullscreen play mode, prioritize the canvas area (hide long help text on small screens). */
+.game-fullscreen .bb-hint,
+.game-fullscreen .tt-hint{
+  display: none;
+}
+
+.game-fullscreen .bb-topbar,
+.game-fullscreen .tt-topbar{
+  margin-bottom: 8px;
+}
+
+.game-fullscreen .tt-host{
+  flex: 1;
+  min-height: 0;
+}
+
+/* When a game is fullscreen on mobile, hide long instruction text so the canvas can fill the viewport. */
+.game-fullscreen .game-hint{
+  display: none;
+}
+
+.leaderboard-sheet{
+  max-height: calc(90svh - var(--nav-h));
+  overflow: auto;
+}
+
+@media (max-width: 640px){
+  .game-stage{
+    max-height: calc(100svh - var(--nav-h) - 140px);
+  }
+
+  .game-stage--play{
+    height: calc(100svh - var(--nav-h) - 120px);
+  }
+
+  .game-stage--fullscreen{
+    padding: 10px;
+  }
+
+  /* Leaderboard opens as a full-screen sheet on mobile */
+  .leaderboard-sheet{
+    height: calc(100svh - var(--nav-h) - 16px);
+    max-height: calc(100svh - var(--nav-h) - 16px);
+    border-radius: 24px;
+    overflow: auto;
+  }
+}
+
 
 /* Slightly nicer text rendering */
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }

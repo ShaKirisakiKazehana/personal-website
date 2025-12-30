@@ -15,7 +15,8 @@ export function bindKeyboard(args: {
 
     const s = args.sRef.current;
 
-    if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") e.preventDefault();
+    // Prevent page scroll while using arrow keys/space inside the game.
+    if ([" ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) e.preventDefault();
 
     if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") s.left = true;
     if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") s.right = true;

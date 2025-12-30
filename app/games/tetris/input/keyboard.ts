@@ -16,7 +16,8 @@ export function bindKeyboard(args: {
 
     const m = args.modeRef.current;
 
-    if (["ArrowLeft", "ArrowRight", "ArrowDown", " "].includes(e.key)) e.preventDefault();
+    // Prevent the browser from scrolling the page while playing.
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(e.key)) e.preventDefault();
 
     if (e.key === " " || e.key === "Enter") {
       if (m === "idle") args.setMode("running");

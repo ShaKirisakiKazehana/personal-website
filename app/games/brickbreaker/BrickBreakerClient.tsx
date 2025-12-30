@@ -9,7 +9,7 @@ import { renderFrame } from "./lib/render";
 import { stepTick } from "./lib/mechanics";
 import { bindKeyboard } from "./input/keyboard";
 import { createPointerHandlers } from "./input/pointer";
-import ScoreboardCard from "../_shared/ScoreboardCard";
+import { useScoreboardApi } from "../_shared/useScoreboardApi";
 
 export default function BrickBreakerClient() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -55,17 +55,13 @@ export default function BrickBreakerClient() {
   const uiScaleRef = useRef(1);
   const sizeRef = useRef({ w: 860, h: 520, dpr: 1 });
 
-  // scoreboard
-  const scoreboardApiRef = useRef<null | {
-    refresh: () => Promise<void>;
-    postScoreOnce: (score: number) => Promise<void>;
-    resetPostLock: () => void;
-  }>(null);
+  // scoreboard (API only; UI is shown in a separate Leaderboard sheet in GamesSection)
+  const scoreboard = useScoreboardApi("brickbreaker");
 
   const resetGame = (toLevel = 1) => {
     const { w, h } = sizeRef.current;
 
-    scoreboardApiRef.current?.resetPostLock();
+    scoreboard.resetPostLock();
 
     stateRef.current = initState({
       canvasW: w,
@@ -206,7 +202,7 @@ export default function BrickBreakerClient() {
       });
 
       if (end.ended) {
-        scoreboardApiRef.current?.postScoreOnce(scoreRef.current);
+        scoreboard.postScoreOnce(scoreRef.current);
       }
 
       renderFrame({
@@ -229,13 +225,17 @@ export default function BrickBreakerClient() {
     };
   }, [levels, isMobile]);
 
-  const gameHeight = isMobile ? "min(70vh, 520px)" : "520px";
+  // Allow an embedding container (e.g. the scroll-snap Games section) to override
+  // the canvas height via CSS variables, so the playable area can stay on-screen.
+  const gameHeight = isMobile
+    ? "var(--game-h-mobile, min(70vh, 520px))"
+    : "var(--game-h-desktop, 520px)";
   const buttonBase = "rounded-full border border-white/10 bg-white/5 hover:bg-white/10 active:bg-white/15";
   const buttonCls = isMobile ? `text-sm px-4 py-2 ${buttonBase}` : `text-sm px-3 py-1.5 ${buttonBase}`;
 
   return (
-    <div className="w-full">
-      <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="w-full flex flex-col min-h-0 flex-1">
+      <div className="bb-topbar flex flex-col gap-2 mb-2 sm:mb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-3">
           <div className="text-sm opacity-80">{mode === "running" ? "Running" : mode}</div>
           <div className="text-xs opacity-80">
@@ -258,16 +258,9 @@ export default function BrickBreakerClient() {
         </div>
       </div>
 
-      <ScoreboardCard
-        game="brickbreaker"
-        onReady={(api) => {
-          scoreboardApiRef.current = api;
-        }}
-      />
-
       <div
         ref={wrapRef}
-        className="rounded-2xl overflow-hidden border border-white/10 bg-black/20 select-none"
+        className="flex-1 rounded-2xl overflow-hidden border border-white/10 bg-black/20 select-none"
         tabIndex={0}
         role="application"
         onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
@@ -280,7 +273,7 @@ export default function BrickBreakerClient() {
         <canvas ref={canvasRef} />
       </div>
 
-      <div className="mt-3 text-xs opacity-70 leading-relaxed">
+      <div className="bb-hint mt-3 text-xs opacity-70 leading-relaxed">
         {isMobile ? (
           <>
             Mobile: <span className="opacity-90">Drag</span> to move,{" "}
