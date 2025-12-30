@@ -14,7 +14,7 @@ import { useScoreboardApi } from "../_shared/useScoreboardApi";
 export default function BrickBreakerClient() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
