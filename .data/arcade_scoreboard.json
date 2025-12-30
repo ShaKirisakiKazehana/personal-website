@@ -1,0 +1,19 @@
+{
+  "users": {
+    "83af08b7-ae91-47aa-855a-9da1f1c027ad": {
+      "name": "user1",
+      "best": {
+        "tetris": 0,
+        "brickbreaker": 50
+      }
+    },
+    "eca8f7eb-e451-4e92-a9a2-4ebeb4eb53da": {
+      "name": "user2",
+      "best": {
+        "tetris": 0,
+        "brickbreaker": 80
+      }
+    }
+  },
+  "nextUserNum": 3
+}
