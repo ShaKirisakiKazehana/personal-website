@@ -1,5 +1,6 @@
 import "./globals.css";
 import Navbar from "../components/Navbar";
+import CodeFloatBg from "@/components/CodeFloatBg";
 
 export const metadata = {
   title: "Dongjue Xie",
