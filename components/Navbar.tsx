@@ -7,6 +7,7 @@ const items = [
   { name: "Home", href: "/" },
   { name: "About", href: "/about" },
   { name: "Resume", href: "/resume" },
+  { name: "Games", href: "/games" },
 ];
 
 export default function Navbar() {
@@ -24,7 +25,10 @@ export default function Navbar() {
           {/* Nav links */}
           <div className="flex gap-10">
             {items.map((item) => {
-              const active = pathname === item.href;
+              const active =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
 
               return (
                 <Link

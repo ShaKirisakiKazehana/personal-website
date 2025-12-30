@@ -1,4 +1,3 @@
-import CodeFloatBg from "@/components/CodeFloatBg";
 import MatrixRainBg from "@/components/MatrixRainBg";
 export default function HomePage() {
   return (
