@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 
 export type GameKey = "tetris" | "brickbreaker";
@@ -11,7 +12,7 @@ type Store = {
   nextUserNum: number; // global user1, user2... across the whole arcade
 };
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = path.join(os.tmpdir(), "arcade");
 const FILE = path.join(DATA_DIR, "arcade_scoreboard.json");
 
 const defaultStore = (): Store => ({
@@ -31,8 +32,14 @@ export async function readStore(): Promise<Store> {
 }
 
 export async function writeStore(store: Store) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(store, null, 2), "utf8");
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(FILE, JSON.stringify(store, null, 2), "utf8");
+  } catch (e) {
+    // In serverless environments, persistent FS may be unavailable.
+    // We store in tmp; if even that fails, we keep functioning without persistence.
+    console.error("writeStore failed:", e);
+  }
 }
 
 export function getOrCreateUser(store: Store, uidCookie?: string) {
