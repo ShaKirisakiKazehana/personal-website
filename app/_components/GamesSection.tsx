@@ -83,29 +83,6 @@ export default function GamesSection() {
           ) : (
             <>
               {/* Top-right action buttons (kept on a single row) */}
-              <div
-                className="fixed right-4 z-50 flex items-center gap-2"
-                style={{ top: "calc(var(--nav-h) + 12px)" }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLb(false);
-                    setSelected(null);
-                  }}
-                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
-                >
-                  Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowLb(true)}
-                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
-                >
-                  Leaderboard
-                </button>
-              </div>
 
               {/* Embedded game stage replaces the list (no full navigation / refresh)
                   Mobile goal: the game should take the whole available viewport. */}
@@ -139,6 +116,27 @@ export default function GamesSection() {
                 </div>
               </div>
 
+              {/* Action buttons below the game UI (no overlay) */}
+              <div className="w-full flex items-center justify-center gap-2 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLb(false);
+                    setSelected(null);
+                  }}
+                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                >
+                  Back
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLb(true)}
+                  className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                >
+                  Leaderboard
+                </button>
+              </div>
               {/* Leaderboard sheet/modal */}
               {showLb && selected && (
                 <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/20 p-4" role="dialog" aria-modal="true">
