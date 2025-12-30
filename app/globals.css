@@ -3,6 +3,7 @@
 /* Global design tokens */
 :root{
   --nav-h: 72px;
+  --nav-w: 0px;
   --bg: #ffffff;
   --fg: #0a0a0a;
   --muted: #6b7280;
@@ -17,6 +18,11 @@ body {
   background: var(--bg);
   color: var(--fg);
   overscroll-behavior: none;  
+}
+
+/* iOS toolbars: prefer dynamic viewport units when available */
+.dvh{
+  height: 100dvh;
 }
 
 /*
@@ -136,6 +142,40 @@ body {
 .leaderboard-sheet{
   max-height: calc(90svh - var(--nav-h));
   overflow: auto;
+}
+
+/* ------------------------------------------------------------
+   Mobile landscape: maximize usable height/width
+   - Move navbar to a fixed right sidebar (handled by Navbar.tsx)
+   - Give pages room so content isn't hidden under the sidebar
+   - Avoid 100vh issues on iOS by preferring svh/dvh
+------------------------------------------------------------- */
+@media (max-width: 900px) and (orientation: landscape){
+  :root{
+    --nav-h: 0px;
+    --nav-w: 150px;
+  }
+
+  body{
+    padding-right: calc(var(--nav-w) + env(safe-area-inset-right, 0px));
+  }
+
+  .snap-container{
+    height: 100dvh;
+    height: 100svh;
+    margin-top: 0;
+  }
+
+  .snap-section{
+    min-height: 100dvh;
+    min-height: 100svh;
+  }
+
+  /* Two-column helper: left text, right primary content (game / PDF) */
+  .ml-split{ display: flex; gap: 14px; align-items: stretch; }
+  .ml-left{ flex: 0 0 240px; min-width: 200px; }
+  .ml-right{ flex: 1 1 auto; min-width: 0; }
+  .ml-fill{ height: calc(100dvh - 24px); height: calc(100svh - 24px); }
 }
 
 @media (max-width: 640px){
