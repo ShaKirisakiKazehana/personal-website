@@ -12,6 +12,14 @@ export default function PlayPage() {
             href="/games/brickbreaker"
             className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 p-5"
           >
+          <Link
+          href="/games/tetris"
+          className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 p-5"
+        >
+          <div className="font-semibold">Tetris</div>
+          <div className="text-sm opacity-75 mt-1">Classic blocks · rotate · clear lines</div>
+        </Link>
+        
             <div className="font-semibold">Brick Breaker</div>
             <div className="text-sm opacity-75 mt-1">Canvas arcade game · score/levels</div>
           </Link>
