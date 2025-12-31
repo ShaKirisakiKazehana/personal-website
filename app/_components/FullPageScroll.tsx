@@ -171,6 +171,27 @@ export default function FullPageScroll({
     window.addEventListener("fullpagescroll:step", onStepEvent as any);
     window.addEventListener("fullpagescroll:go", onGoEvent as any);
 
+    // Keep the user on the same snap section when the viewport size changes
+    // (e.g., mobile portrait <-> landscape). Without this, the same scrollTop
+    // can map to a different section after layout reflow, making the user feel
+    // "thrown" into the next/previous section.
+    let resizeT: number | null = null;
+    const keepSectionOnResize = () => {
+      if (resizeT) window.clearTimeout(resizeT);
+      const wantedIdx = activeIndexRef.current;
+      // Wait a moment for layout to settle (address bar/orientation changes).
+      resizeT = window.setTimeout(() => {
+        // Use 'auto' to avoid extra smooth-scroll animations during rotation.
+        const list = Array.from(el.querySelectorAll(sectionSelector)) as HTMLElement[];
+        const idx = Math.max(0, Math.min(list.length - 1, wantedIdx));
+        list[idx]?.scrollIntoView({ behavior: "auto", block: "start" });
+        setActiveIndex(idx);
+      }, 120);
+    };
+
+    window.addEventListener("resize", keepSectionOnResize);
+    window.addEventListener("orientationchange", keepSectionOnResize);
+
 
     const onWheel = (e: WheelEvent) => {
       // If the user is interacting with an embedded widget/game, don't hijack scrolling.
@@ -257,6 +278,9 @@ export default function FullPageScroll({
       window.removeEventListener("hashchange", scrollToHash as any);
       window.removeEventListener("fullpagescroll:step", onStepEvent as any);
       window.removeEventListener("fullpagescroll:go", onGoEvent as any);
+      window.removeEventListener("resize", keepSectionOnResize as any);
+      window.removeEventListener("orientationchange", keepSectionOnResize as any);
+      if (resizeT) window.clearTimeout(resizeT);
     };
   }, [lockMs, sectionSelector]);
 
