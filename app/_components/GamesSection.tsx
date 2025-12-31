@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { glass, cn } from "../_styles/glass";
 
 type GameKey = "tetris" | "brickbreaker";
 
@@ -66,7 +67,7 @@ export default function GamesSection() {
               <button
                 type="button"
                 onClick={() => setSelected("tetris")}
-                className="text-left rounded-2xl border border-black/10 bg-white/70 p-6 hover:bg-white transition"
+                className={cn(glass.card, "p-6 text-left", "transition", "hover:bg-white/45")}
               >
                 <div className="text-sm font-semibold">Tetris</div>
                 <div className="mt-1 text-sm text-neutral-600">Classic blocks · rotate · clear lines</div>
@@ -75,7 +76,7 @@ export default function GamesSection() {
               <button
                 type="button"
                 onClick={() => setSelected("brickbreaker")}
-                className="text-left rounded-2xl border border-black/10 bg-white/70 p-6 hover:bg-white transition"
+                className={cn(glass.card, "p-6 text-left", "transition", "hover:bg-white/45")}
               >
                 <div className="text-sm font-semibold">Brick Breaker</div>
                 <div className="mt-1 text-sm text-neutral-600">Canvas arcade · score/levels</div>
@@ -94,7 +95,11 @@ export default function GamesSection() {
                     ref={stageRef}
                     tabIndex={0}
                     data-no-snap
-                    className="game-stage game-stage--fullscreen game-fullscreen flex-1 min-h-0 rounded-3xl border border-black/10 bg-white/70 outline-none focus:ring-2 focus:ring-black/20"
+                    className={cn(
+                      glass.cardLg,
+                      "game-stage game-stage--fullscreen game-fullscreen flex-1 min-h-0 outline-none",
+                      "focus:ring-2 focus:ring-white/30"
+                    )}
                     onKeyDown={(e) => {
                       const k = e.key;
                       if (
@@ -138,7 +143,7 @@ export default function GamesSection() {
                       setShowLb(false);
                       setSelected(null);
                     }}
-                    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                    className={cn(glass.pill, "inline-flex items-center justify-center px-4 py-2 text-sm font-medium", glass.pillHoverDark)}
                   >
                     Back
                   </button>
@@ -146,7 +151,7 @@ export default function GamesSection() {
                   <button
                     type="button"
                     onClick={() => setShowLb(true)}
-                    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-sm font-medium shadow-sm backdrop-blur hover:bg-black hover:text-white transition"
+                    className={cn(glass.pill, "inline-flex items-center justify-center px-4 py-2 text-sm font-medium", glass.pillHoverDark)}
                   >
                     Leaderboard
                   </button>
@@ -160,13 +165,13 @@ export default function GamesSection() {
                   role="dialog"
                   aria-modal="true"
                 >
-                  <div className="leaderboard-sheet w-full max-w-[720px] rounded-3xl border border-black/10 bg-white/95 backdrop-blur p-4 sm:p-6">
+                  <div className={cn(glass.modal, "leaderboard-sheet w-full max-w-[720px] p-4 sm:p-6")}>
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold">{title} · Leaderboard</div>
                       <button
                         type="button"
                         onClick={() => setShowLb(false)}
-                        className="rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-medium hover:bg-black hover:text-white transition"
+                        className={cn(glass.pill, "px-4 py-2 text-sm font-medium", glass.pillHoverDark)}
                       >
                         Close
                       </button>

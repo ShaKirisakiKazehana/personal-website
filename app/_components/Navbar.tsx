@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { glass, cn } from "../_styles/glass";
 
 type NavKey = "home" | "about" | "resume" | "games";
 
@@ -20,14 +22,26 @@ export default function Navbar() {
   const [activeKey, setActiveKey] = useState<NavKey>(() => (pathname === "/" ? "home" : "home"));
 
   const [menuOpen, setMenuOpen] = useState(false);
+  // NOTE: Dropdown is portaled to <body> so its backdrop-filter samples the real page behind it,
+  // instead of the navbar glass surface (which makes the blur look "broken").
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Removed duplicate declaration of portalReady
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
   const [isMobileLandscape, setIsMobileLandscape] = useState(false);
 
   // ✅ measure: dropdown width should "hug" the widest tab label (+ small padding),
   // and auto-update if you add longer tabs later.
   const [dropdownW, setDropdownW] = useState<number | null>(null);
+
+  const [portalReady, setPortalReady] = useState(false);
+  const [ddPos, setDdPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px) and (orientation: portrait)");
@@ -126,19 +140,11 @@ export default function Navbar() {
   useEffect(() => {
     if (isMobileLandscape) return; // sidebar mode: menu stays visible
     if (!menuOpen) return;
-
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenuOpen(false);
     };
-    window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
     };
   }, [menuOpen, isMobileLandscape]);
@@ -190,6 +196,47 @@ export default function Navbar() {
     };
   }, [isMobilePortrait, isMobileLandscape, menuOpen]);
 
+  // ✅ Position dropdown in viewport coordinates for portal rendering.
+  useEffect(() => {
+    if (!isMobilePortrait || isMobileLandscape) {
+      setDdPos(null);
+      return;
+    }
+    if (!menuOpen) {
+      setDdPos(null);
+      return;
+    }
+
+    const compute = () => {
+      const btn = buttonRef.current;
+      if (!btn) return;
+
+      const r = btn.getBoundingClientRect();
+      const width = dropdownW ?? Math.ceil(r.width);
+      const gutter = 10;
+      const leftRaw = Math.round(r.right - width);
+      const left = Math.max(gutter, Math.min(leftRaw, window.innerWidth - gutter - width));
+      const top = Math.round(r.bottom + 12); // mt-3
+
+      setDdPos({ top, left, width });
+    };
+
+    compute();
+    const onResize = () => compute();
+    // scroll can change the button's position relative to viewport
+    const onScroll = () => compute();
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    window.addEventListener("scroll", onScroll, true);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [menuOpen, isMobilePortrait, isMobileLandscape, dropdownW]);
+
   // Sidebar mode: close any previously open portrait dropdown
   useEffect(() => {
     if (isMobileLandscape) setMenuOpen(false);
@@ -199,7 +246,11 @@ export default function Navbar() {
   if (isMobileLandscape) {
     return (
       <aside
-        className="fixed top-0 bottom-0 right-0 z-50 flex flex-col border-l border-black/10 bg-white/85 backdrop-blur"
+        className={cn(
+          "fixed top-0 bottom-0 right-0 z-50 flex flex-col",
+          glass.navRail,
+          "border-l border-white/25"
+        )}
         style={{ width: "var(--nav-w)", paddingRight: "env(safe-area-inset-right, 0px)" }}
       >
         <div className="px-4 pt-5 pb-3">
@@ -209,7 +260,7 @@ export default function Navbar() {
         </div>
 
         <div className="px-3 pb-5 overflow-auto">
-          <div className="rounded-2xl border border-white/25 bg-white/20 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.10)]">
+          <div className={glass.navShell}>
             <div className="p-2">
               {menuItems.map((it) => {
                 const isActive = it.key === displayKey;
@@ -218,10 +269,7 @@ export default function Navbar() {
                     key={it.key}
                     type="button"
                     onClick={() => (isActive ? undefined : goTo(it.key))}
-                    className={
-                      "relative w-full rounded-xl py-2 text-center transition hover:bg-white/25 active:bg-white/30 " +
-                      (isActive ? "bg-white/15" : "")
-                    }
+                    className={cn(glass.navItem, isActive && glass.navItemActive)}
                     aria-current={isActive ? "page" : undefined}
                   >
                     <span className="relative inline-flex flex-col items-center text-sm font-medium text-black/90 whitespace-nowrap">
@@ -244,7 +292,7 @@ export default function Navbar() {
   }
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 bg-white/85 backdrop-blur border-b border-black/10">
+    <header className={cn("fixed left-0 right-0 top-0 z-50", glass.navRail, "border-b border-white/25")}>
       <div className="mx-auto max-w-[1200px] px-8 py-5">
         <nav className={`flex items-center ${isMobilePortrait ? "justify-between" : "gap-12"}`}>
           {/* Name */}
@@ -277,6 +325,7 @@ export default function Navbar() {
           ) : (
             <div className="relative inline-block" ref={menuRef}>
               <button
+                ref={buttonRef}
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="text-sm font-semibold text-black/90 hover:text-black transition whitespace-nowrap"
@@ -287,47 +336,61 @@ export default function Navbar() {
                 {displayName}
               </button>
 
-              {/* Dropdown (glass) */}
-              <div
-                className={
-                  "absolute right-0 mt-3 overflow-visible rounded-2xl " +
-                  "border border-white/25 bg-white/20 backdrop-blur-xl " +
-                  "shadow-[0_12px_40px_rgba(0,0,0,0.16)] " +
-                  "transition-all duration-200 " +
-                  (menuOpen
-                    ? "opacity-100 translate-y-0 max-h-72"
-                    : "pointer-events-none opacity-0 -translate-y-2 max-h-0")
-                }
-                role="menu"
-                style={dropdownW ? { width: `${dropdownW}px` } : undefined}
-              >
-                <div className="p-2">
-                  {menuItems.map((it) => {
-                    const isActive = it.key === displayKey;
+              {/* Dropdown: PORTAL to body so blur samples the real page behind it */}
+              {portalReady && menuOpen && ddPos
+                ? createPortal(
+                    <div className="fixed inset-0 z-[9999]" role="presentation">
+                      {/* click-outside overlay */}
+                      <div
+                        className="absolute inset-0"
+                        onPointerDown={() => setMenuOpen(false)}
+                        aria-hidden="true"
+                      />
 
-                    return (
-                      <button
-                        key={it.key}
-                        type="button"
-                        onClick={() => (isActive ? setMenuOpen(false) : goTo(it.key))}
-                        className="relative w-full rounded-xl py-2 text-center transition hover:bg-white/25 active:bg-white/30"
-                        role="menuitem"
-                        aria-current={isActive ? "page" : undefined}
+                      {/* menu */}
+                      <div
+                        ref={dropdownRef}
+                        className="fixed"
+                        style={{ top: ddPos.top, left: ddPos.left, width: ddPos.width }}
+                        role="menu"
+                        onPointerDown={(e) => e.stopPropagation()}
                       >
-                        <span className="relative inline-flex flex-col items-center text-sm font-medium text-black/90 whitespace-nowrap">
-                          {it.name}
-                          <span
-                            className={
-                              "mt-0.5 h-[2px] w-full bg-black transition-opacity duration-200 " +
-                              (isActive ? "opacity-100" : "opacity-0")
-                            }
-                          />
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                        {/* iOS Safari: keep transforms off the actual glass surface */}
+                        <div className="transition-all duration-200 origin-top-right opacity-100 translate-y-0">
+                          <div className={glass.navShell}>
+                            <div className="p-2">
+                              {menuItems.map((it) => {
+                                const isActive = it.key === displayKey;
+
+                                return (
+                                  <button
+                                    key={it.key}
+                                    type="button"
+                                    onClick={() => (isActive ? setMenuOpen(false) : goTo(it.key))}
+                                    className={cn(glass.navItem, isActive && glass.navItemActive)}
+                                    role="menuitem"
+                                    aria-current={isActive ? "page" : undefined}
+                                  >
+                                    <span className="relative inline-flex flex-col items-center text-sm font-medium text-black/90 whitespace-nowrap">
+                                      {it.name}
+                                      <span
+                                        className={
+                                          "mt-0.5 h-[2px] w-full bg-black transition-opacity duration-200 " +
+                                          (isActive ? "opacity-100" : "opacity-0")
+                                        }
+                                      />
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
+                  )
+                : null}
             </div>
           )}
         </nav>

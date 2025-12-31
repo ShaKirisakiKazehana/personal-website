@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { glass, cn } from "../../_styles/glass";
 
 export type GameKey = "tetris" | "brickbreaker";
 
@@ -77,21 +78,21 @@ export default function ScoreboardCard({
 
   return (
     <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className={cn(glass.panelSoft, "p-3", "text-neutral-900")}>
         <div className="text-sm opacity-70">You are</div>
         <div className="text-lg font-semibold">{userName}</div>
         <div className="mt-2 text-xs opacity-70">
           Best score is stored on server (updates on Game Over / Win).
         </div>
         <button
-          className="mt-3 text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
+          className={cn(glass.pillGhost, "mt-3 text-xs px-3 py-1.5")}
           onClick={refresh}
         >
           Refresh leaderboard
         </button>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className={cn(glass.panelSoft, "p-3", "text-neutral-900")}>
         <div className="text-sm opacity-70">Leaderboard (Top 10)</div>
         <div className="mt-2 space-y-1">
           {leaderboard.length === 0 ? (
