@@ -21,9 +21,26 @@ export default function ResumeDeck() {
   const [ddPos, setDdPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const [portalReady, setPortalReady] = useState(false);
 
+  // Animated dropdown mounting (avoid iOS "ghost click" reopen + enable smooth open/close)
+  const [ddMounted, setDdMounted] = useState(false);
+  const [ddShown, setDdShown] = useState(false);
+
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  // Drive dropdown mount + animation state from menuOpen
+  useEffect(() => {
+    if (menuOpen) {
+      setDdMounted(true);
+      const raf = requestAnimationFrame(() => setDdShown(true));
+      return () => cancelAnimationFrame(raf);
+    }
+
+    setDdShown(false);
+    const t = window.setTimeout(() => setDdMounted(false), 200);
+    return () => window.clearTimeout(t);
+  }, [menuOpen]);
 
   // Swipe tracking
   const touchRef = useRef<{
@@ -196,7 +213,8 @@ export default function ResumeDeck() {
 
   return (
     <div className="w-full overflow-x-hidden">
-      <div className={cn("sticky top-0 z-20", glass.header)}>
+      {/* Keep header above the portaled dropdown overlay so tapping the button again closes it on iOS */}
+      <div className={cn("sticky top-0 z-[20]", glass.header)}>
         <div className="mx-auto max-w-[1200px] px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-3">
           <div>
             <div className="text-lg font-semibold text-neutral-900">Resume</div>
@@ -224,11 +242,15 @@ export default function ResumeDeck() {
               </button>
 
               {/* Dropdown: PORTAL to body so blur samples the real page behind it (not this sticky header). */}
-              {portalReady && menuOpen && ddPos
+              {portalReady && ddMounted && ddPos
                 ? createPortal(
                     <>
                       {/* click-outside overlay */}
-                      <div className="fixed inset-0 z-[9998]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                      <div
+                        className="fixed inset-0 z-[9998]"
+                        onPointerDown={() => setMenuOpen(false)}
+                        aria-hidden="true"
+                      />
 
                       <div
                         className="fixed z-[9999]"
@@ -236,7 +258,12 @@ export default function ResumeDeck() {
                         role="menu"
                       >
                         {/* Keep transforms on an outer wrapper; keep the actual glass surface un-transformed. */}
-                        <div className="transition-all duration-200 origin-top-right opacity-100 translate-y-0">
+                        <div
+                          className={cn(
+                            "transition-all duration-200 origin-top-right will-change-transform will-change-opacity",
+                            ddShown ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-1 scale-[0.98]"
+                          )}
+                        >
                           <div ref={panelRef} className={cn(glass.navShell, "p-2 max-h-72 overflow-auto")}>
                             {cards.map((c, idx) => {
                               const isActive = idx === active;

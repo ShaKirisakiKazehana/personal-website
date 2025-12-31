@@ -39,9 +39,33 @@ export default function Navbar() {
   const [portalReady, setPortalReady] = useState(false);
   const [ddPos, setDdPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  // Animated dropdown mounting (avoid iOS "ghost click" reopen + enable smooth open/close)
+  const [ddMounted, setDdMounted] = useState(false);
+  const [ddShown, setDdShown] = useState(false);
+
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  // Drive dropdown mount + animation state from menuOpen
+  useEffect(() => {
+    if (isMobileLandscape) {
+      setDdMounted(false);
+      setDdShown(false);
+      return;
+    }
+    if (menuOpen) {
+      setDdMounted(true);
+      // next frame so the initial render can start from "closed" styles
+      const raf = requestAnimationFrame(() => setDdShown(true));
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // closing: animate out then unmount
+    setDdShown(false);
+    const t = window.setTimeout(() => setDdMounted(false), 200);
+    return () => window.clearTimeout(t);
+  }, [menuOpen, isMobileLandscape]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px) and (orientation: portrait)");
@@ -292,7 +316,8 @@ export default function Navbar() {
   }
 
   return (
-    <header className={cn("fixed left-0 right-0 top-0 z-50", glass.navRail, "border-b border-white/25")}>
+    // Keep navbar above the portaled dropdown overlay so tapping the button again closes it on iOS.
+    <header className={cn("fixed left-0 right-0 top-0 z-[10000]", glass.navRail, "border-b border-white/25")}>
       <div className="mx-auto max-w-[1200px] px-8 py-5">
         <nav className={`flex items-center ${isMobilePortrait ? "justify-between" : "gap-12"}`}>
           {/* Name */}
@@ -337,7 +362,7 @@ export default function Navbar() {
               </button>
 
               {/* Dropdown: PORTAL to body so blur samples the real page behind it */}
-              {portalReady && menuOpen && ddPos
+              {portalReady && ddMounted && ddPos
                 ? createPortal(
                     <div className="fixed inset-0 z-[9999]" role="presentation">
                       {/* click-outside overlay */}
@@ -356,7 +381,12 @@ export default function Navbar() {
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {/* iOS Safari: keep transforms off the actual glass surface */}
-                        <div className="transition-all duration-200 origin-top-right opacity-100 translate-y-0">
+                        <div
+                          className={cn(
+                            "transition-all duration-200 origin-top-right will-change-transform will-change-opacity",
+                            ddShown ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-1 scale-[0.98]"
+                          )}
+                        >
                           <div className={glass.navShell}>
                             <div className="p-2">
                               {menuItems.map((it) => {
